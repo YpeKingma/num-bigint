@@ -122,6 +122,7 @@ mod macros;
 
 mod bigint;
 mod biguint;
+mod bigintexp;
 
 #[cfg(feature = "rand")]
 mod bigrand;
