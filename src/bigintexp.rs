@@ -311,116 +311,75 @@ impl<const BASE: Base> Neg for &BigIntExp<BASE> {
 }
 
 impl<const BASE: Base> Integer for BigIntExp<BASE> {
-    #[inline]
-    fn div_rem(&self, _other: &Self) -> (Self, Self) {
-        todo!();
-        // // r.sign == self.sign
-        // let (d_ui, r_ui) = self.data.div_rem(&other.data);
-        // let d = BigInt::from_biguint(self.sign, d_ui);
-        // let r = BigInt::from_biguint(self.sign, r_ui);
-        // if other.is_negative() {
-        //     (-d, r)
-        // } else {
-        //     (d, r)
-        // }
+    fn div_rem(&self, other: &Self) -> (Self, Self) {
+        let (quot, rem) = self.data.div_mod_floor(&other.data);
+        let de = self.exp - other.exp;
+        (Self::new(de, quot), Self::new(de, rem))
     }
 
     #[inline]
-    fn div_floor(&self, _other: &Self) -> Self {
-        todo!();
-        // let (d_ui, m) = self.data.div_mod_floor(&other.data);
-        // let d = BigInt::from(d_ui);
-        // match (self.sign, other.sign) {
-        //     (Plus, Plus) | (NoSign, Plus) | (Minus, Minus) => d,
-        //     (Plus, Minus) | (NoSign, Minus) | (Minus, Plus) => {
-        //         if m.is_zero() {
-        //             -d
-        //         } else {
-        //             -d - 1u32
-        //         }
-        //     }
-        //     (_, NoSign) => unreachable!(),
+    fn div_floor(&self, other: &Self) -> Self {
+        let (quot, _rem) = self.data.div_mod_floor(&other.data);
+        let de = self.exp - other.exp;
+        Self::new(de, quot)
     }
 
     #[inline]
-    fn mod_floor(&self, _other: &Self) -> Self {
-        todo!();
-        // // m.sign == other.sign
-        // let m_ui = self.data.mod_floor(&other.data);
-        // let m = BigInt::from_biguint(other.sign, m_ui);
-        // match (self.sign, other.sign) {
-        //     (Plus, Plus) | (NoSign, Plus) | (Minus, Minus) => m,
-        //     (Plus, Minus) | (NoSign, Minus) | (Minus, Plus) => {
-        //         if m.is_zero() {
-        //             m
-        //         } else {
-        //             other - m
-        //         }
-        //     }
-        //     (_, NoSign) => unreachable!(),
-        // }
+    fn mod_floor(&self, other: &Self) -> Self {
+        let (_quot, rem) = self.data.div_mod_floor(&other.data);
+        let de = self.exp - other.exp;
+        Self::new(de, rem)
     }
 
-    fn div_mod_floor(&self, _other: &Self) -> (Self, Self) {
-        todo!();
-        // // m.sign == other.sign
-        // let (d_ui, m_ui) = self.data.div_mod_floor(&other.data);
-        // let d = BigInt::from(d_ui);
-        // let m = BigInt::from_biguint(other.sign, m_ui);
-        // match (self.sign, other.sign) {
-        //     (Plus, Plus) | (NoSign, Plus) | (Minus, Minus) => (d, m),
-        //     (Plus, Minus) | (NoSign, Minus) | (Minus, Plus) => {
-        //         if m.is_zero() {
-        //             (-d, m)
-        //         } else {
-        //             (-d - 1u32, other - m)
-        //         }
-        //     }
-        //     (_, NoSign) => unreachable!(),
-        // }
+    fn div_mod_floor(&self, other: &Self) -> (Self, Self) {
+        self.div_rem(other)
     }
 
     #[inline]
-    fn div_ceil(&self, _other: &Self) -> Self {
-        todo!();
-        // let (d_ui, m) = self.data.div_mod_floor(&other.data);
-        // let d = BigInt::from(d_ui);
-        // match (self.sign, other.sign) {
-        //     (Plus, Minus) | (NoSign, Minus) | (Minus, Plus) => -d,
-        //     (Plus, Plus) | (NoSign, Plus) | (Minus, Minus) => {
-        //         if m.is_zero() {
-        //             d
-        //         } else {
-        //             d + 1u32
-        //         }
-        //     }
-        //     (_, NoSign) => unreachable!(),
-        // }
+    fn div_ceil(&self, other: &Self) -> Self {
+        use crate::Sign::*;
+        let (d, m) = self.data.div_mod_floor(&other.data);
+        match (self.data.sign(), other.data.sign()) {
+            (Plus, Minus) | (NoSign, Minus) | (Minus, Plus) => -d,
+            (Plus, Plus) | (NoSign, Plus) | (Minus, Minus) => {
+                if m.is_zero() {
+                    d
+                } else {
+                    d + 1u32
+                }
+            }
+            (_, NoSign) => unreachable!(),
+        }
+        .into()
     }
 
     /// Calculates the Greatest Common Divisor (GCD) of the number and `other`.
     ///
     /// The result is always positive.
-    #[inline]
-    fn gcd(&self, _other: &Self) -> Self {
-        todo!();
-        // BigInt::from(self.data.gcd(&other.data))
+    fn gcd(&self, other: &Self) -> Self {
+        // CHECKME:
+        let gcd_bi = self.data.gcd(&other.data);
+        let min_exp = self.exp.min(other.exp);
+        Self::new(min_exp, gcd_bi)
     }
 
     /// Calculates the Lowest Common Multiple (LCM) of the number and `other`.
-    #[inline]
-    fn lcm(&self, _other: &Self) -> Self {
-        todo!();
-        // BigInt::from(self.data.lcm(&other.data))
+    fn lcm(&self, other: &Self) -> Self {
+        // CHECKME:
+        let lcm_bi = self.data.lcm(&other.data);
+        let max_exp = self.exp.max(other.exp);
+        Self::new(max_exp, lcm_bi)
     }
 
     /// Calculates the Greatest Common Divisor (GCD) and
     /// Lowest Common Multiple (LCM) together.
     #[inline]
-    fn gcd_lcm(&self, _other: &Self) -> (Self, Self) {
-        todo!();
-        // let (gcd, lcm) = self.data.gcd_lcm(&other.data);
-        // (BigInt::from(gcd), BigInt::from(lcm))
+    fn gcd_lcm(&self, other: &Self) -> (Self, Self) {
+        // CHECKME:
+        let (gcd_bi, lcm_bi) = self.data.gcd_lcm(&other.data);
+        let min_exp = self.exp.min(other.exp);
+        let max_exp = self.exp.max(other.exp);
+        (Self::new(min_exp, gcd_bi), Self::new(max_exp, lcm_bi))
     }
 
     /// Greatest common divisor, least common multiple, and Bézout coefficients.
@@ -444,21 +403,32 @@ impl<const BASE: Base> Integer for BigIntExp<BASE> {
 
     /// Returns `true` if the number is a multiple of `other`.
     #[inline]
-    fn is_multiple_of(&self, _other: &Self) -> bool {
-        todo!();
-        // self.data.is_multiple_of(&other.data)
+    fn is_multiple_of(&self, other: &Self) -> bool {
+        // CHECKME:
+        self.data.is_multiple_of(&other.data)
     }
 
     /// Returns `true` if the number is divisible by `2`.
-    #[inline]
     fn is_even(&self) -> bool {
-        self.data.is_even()
+        // CHECKME:
+        if self.exp < 0 {
+            false
+        } else if BASE.is_even() {
+            ! self.data.is_zero()
+        } else {
+            self.data.is_even()
+        }
     }
 
     /// Returns `true` if the number is not divisible by `2`.
     #[inline]
     fn is_odd(&self) -> bool {
-        self.data.is_odd()
+        // CHECKME:
+        if self.exp < 0 {
+            false
+        } else {
+            self.data.is_odd()
+        }
     }
 
     /// Rounds up to nearest multiple of argument.
@@ -480,8 +450,10 @@ impl<const BASE: Base> Integer for BigIntExp<BASE> {
 
 impl<const BASE: Base> Rem for BigIntExp<BASE> {
     type Output = Self;
-    fn rem(self, _rhs: BigIntExp<BASE>) -> <Self as Rem<BigIntExp<BASE>>>::Output {
-        todo!()
+    fn rem(self, other: Self) -> Self {
+        let (_quot, rem) = self.data.div_mod_floor(&other.data);
+        let de = self.exp - other.exp;
+        Self::new(de, rem)
     }
 }
 
