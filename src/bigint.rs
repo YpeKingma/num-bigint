@@ -3,7 +3,7 @@
 
 use crate::std_alloc::{String, Vec};
 use core::cmp::Ordering::{self, Equal};
-use core::default::Default;
+// use core::default::Default;
 use core::fmt;
 use core::hash;
 use core::ops::{Neg, Not};

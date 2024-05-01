@@ -4,7 +4,7 @@
 use crate::std_alloc::{String, Vec};
 use crate::{ParseBigIntError, Sign};
 use core::cmp::Ordering::{self};
-use core::default::Default;
+// use core::default::Default;
 use core::fmt;
 use core::hash;
 use core::ops::{Add, Div, Mul, Neg, Rem, Sub};

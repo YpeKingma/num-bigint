@@ -6,7 +6,7 @@ use crate::TryFromBigIntError;
 use crate::{BigUint, ParseBigIntError, ToBigUint};
 
 use core::cmp::Ordering::{Equal, Greater, Less};
-use core::convert::TryFrom;
+// use core::convert::TryFrom;
 use core::str::{self, FromStr};
 use num_traits::{FromPrimitive, Num, One, ToPrimitive, Zero};
 
