@@ -87,7 +87,17 @@ impl<const BASE: Base> fmt::Debug for BigIntExp<BASE> {
 }
 
 impl<const BASE: Base> fmt::Display for BigIntExp<BASE> {
-    /// Only for BASE allowed by to_str_radix.
+    /// Formats as a string with digits in `BASE`.
+    /// `BASE` must be in the range `2...36`.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use num_bigint::BigIntExp;
+    ///
+    /// let i = BigIntExp::<16>::parse_bytes(b"ff").unwrap();
+    /// assert_eq!(i.to_sting(), "ff");
+    /// ```
     fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
         todo!();
         // f.pad_integral(!self.is_negative(), "", &self.data.to_str_radix(BASE as u32))
@@ -597,21 +607,6 @@ impl<const BASE: Base> BigIntExp<BASE> {
         (self.exp, self.data)
     }
 
-    /// Returns the integer formatted as a string with digits in `BASE`.
-    /// `BASE` must be in the range `2...36`.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use num_bigint::BigIntExp;
-    ///
-    /// let i = BigIntExp::<16>::parse_bytes(b"ff").unwrap();
-    /// assert_eq!(i.to_sting(), "ff");
-    /// ```
-    #[inline]
-    pub fn to_string(&self) -> String {
-        todo!()
-    }
 
     #[inline]
     pub fn checked_add(&self, v: &Self) -> Option<Self> {
