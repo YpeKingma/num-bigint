@@ -2,7 +2,7 @@
 #![allow(clippy::suspicious_arithmetic_impl)]
 
 use crate::std_alloc::Vec;
-use crate::{BigIntErrorKind, ParseBigIntError, Sign};
+use crate::{ParseBigIntError, Sign};
 use core::cmp::Ordering::{self};
 // use core::default::Default;
 use core::fmt;
@@ -96,7 +96,7 @@ impl<const BASE: Base> fmt::Display for BigIntExp<BASE> {
     /// use num_bigint::BigIntExp;
     ///
     /// let i = BigIntExp::<16>::parse_bytes(b"ff").unwrap();
-    /// assert_eq!(i.to_sting(), "ff");
+    /// assert_eq!(i.to_string(), "ff");
     /// ```
     fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
         todo!();
@@ -182,18 +182,8 @@ impl<const BASE: Base> One for BigIntExp<BASE> {
 
 impl<const BASE: Base> Num for BigIntExp<BASE> {
     type FromStrRadixErr = ParseBigIntError;
-    fn from_str_radix(_s: &str, radix: u32) -> Result<Self, ParseBigIntError> {
-        if radix != BASE as u32 {
-            // FIXME: also convert from radix to BASE.
-            Err(ParseBigIntError {
-                kind: BigIntErrorKind::InvalidDigit,
-            })
-        } else {
-            match BigInt::from_str_radix(s, BASE as u32) {
-                Err(e) => Err(e),
-                Ok(bi) => Ok(Self::from(bi)),
-            }
-        }
+    fn from_str_radix(s: &str, radix: u32) -> Result<Self, ParseBigIntError> {
+        BigInt::from_str_radix(s, radix).map(Self::from)
     }
 }
 
@@ -485,6 +475,9 @@ impl<const BASE: Base> From<BigInt> for BigIntExp<BASE> {
 
 impl<const BASE: Base> BigIntExp<BASE> {
     pub fn new(exp: i32, data: BigInt) -> Self {
+        if BASE < 2 {
+            panic!("BASE smaller than 2");
+        }
         let mut res = BigIntExp::<BASE> { exp, data };
         res.normalize();
         res
