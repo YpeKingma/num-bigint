@@ -95,8 +95,8 @@ impl<const BASE: Base> fmt::Display for BigIntExp<BASE> {
     /// ```
     /// use num_bigint::BigIntExp;
     ///
-    /// let i = BigIntExp::<16>::parse_bytes(b"ff").unwrap();
-    /// assert_eq!(i.to_string(), "ff");
+    /// let bie = BigIntExp::<16>::parse_bytes(b"ff").unwrap();
+    /// assert_eq!(bie.to_string(), "ff");
     /// ```
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut tmp = self.data.abs().to_str_radix(BASE as u32);
@@ -128,26 +128,28 @@ impl<const BASE: Base> fmt::Display for BigIntExp<BASE> {
 
 impl<const BASE: Base> Add for BigIntExp<BASE> {
     type Output = Self;
-    fn add(self, _rhs: Self) -> Self::Output {
-        todo!()
-        // match self.pow_ten.cmp(&rhs.pow_ten) {
-        //     Ordering::Equal => BigIntPowTen::new(&self.big_int + &rhs.big_int, self.pow_ten),
-        //     Ordering::Less => {
-        //         let dp = (rhs.pow_ten - self.pow_ten) as u32;
-        //         BigIntPowTen::new(&self.big_int + &rhs.big_int * tenpow(dp), self.pow_ten)
-        //     },
-        //     Ordering::Greater => {
-        //         let dp = (self.pow_ten - rhs.pow_ten) as u32;
-        //         BigIntPowTen::new(&self.big_int * tenpow(dp) + &rhs.big_int, rhs.pow_ten)
-        //     },
-        // }
+    #[inline]
+    fn add(self, rhs: Self) -> Self::Output {
+        &self + &rhs
     }
 }
 
 impl<const BASE: Base> Add for &BigIntExp<BASE> {
     type Output = BigIntExp<BASE>;
-    fn add(self, _rhs: &BigIntExp<BASE>) -> Self::Output {
-        todo!()
+    fn add(self, rhs: Self) -> Self::Output {
+        match self.exp.cmp(&rhs.exp) {
+            Ordering::Equal => BigIntExp::new(self.exp, &self.data + &rhs.data),
+            Ordering::Less => {
+                let de = (rhs.exp - self.exp) as u32;
+                let base_pow_de: BigInt = BigInt::from(BASE).pow(de);
+                BigIntExp::new(self.exp, &self.data + &rhs.data * base_pow_de)
+            }
+            Ordering::Greater => {
+                let de = (self.exp - rhs.exp) as u32;
+                let base_pow_de: BigInt = BigInt::from(BASE).pow(de);
+                BigIntExp::new(rhs.exp, &self.data * base_pow_de + &rhs.data)
+            }
+        }
     }
 }
 
@@ -174,15 +176,16 @@ impl<const BASE: Base> Zero for BigIntExp<BASE> {
 
 impl<const BASE: Base> Mul for BigIntExp<BASE> {
     type Output = Self;
-    fn mul(self, _rhs: Self) -> Self::Output {
-        todo!()
+    #[inline]
+    fn mul(self, rhs: Self) -> Self::Output {
+        &self * &rhs
     }
 }
 
 impl<const BASE: Base> Mul for &BigIntExp<BASE> {
     type Output = BigIntExp<BASE>;
-    fn mul(self, _rhs: Self) -> Self::Output {
-        todo!()
+    fn mul(self, rhs: Self) -> Self::Output {
+        BigIntExp::<BASE>::new(self.exp + rhs.exp, &self.data * &rhs.data)
     }
 }
 
@@ -210,28 +213,42 @@ impl<const BASE: Base> One for BigIntExp<BASE> {
 impl<const BASE: Base> Num for BigIntExp<BASE> {
     type FromStrRadixErr = ParseBigIntError;
     fn from_str_radix(s: &str, radix: u32) -> Result<Self, ParseBigIntError> {
+        // FIXME: allow a dot.
         BigInt::from_str_radix(s, radix).map(Self::from)
     }
 }
 
 impl<const BASE: Base> Div for BigIntExp<BASE> {
     type Output = Self;
-    fn div(self, _: BigIntExp<BASE>) -> <Self as Div<BigIntExp<BASE>>>::Output {
-        todo!()
+    fn div(self, rhs: BigIntExp<BASE>) -> Self {
+        BigIntExp::<BASE>::new(self.exp - rhs.exp, self.data.div(rhs.data))
     }
 }
 
 impl<const BASE: Base> Sub for BigIntExp<BASE> {
     type Output = Self;
-    fn sub(self, _: BigIntExp<BASE>) -> <Self as Sub<BigIntExp<BASE>>>::Output {
-        todo!()
+    #[inline]
+    fn sub(self, rhs: BigIntExp<BASE>) -> <Self as Sub<BigIntExp<BASE>>>::Output {
+        &self - &rhs
     }
 }
 
 impl<const BASE: Base> Sub for &BigIntExp<BASE> {
     type Output = BigIntExp<BASE>;
-    fn sub(self, _rhs: Self) -> Self::Output {
-        todo!()
+    fn sub(self, rhs: Self) -> Self::Output {
+        match self.exp.cmp(&rhs.exp) {
+            Ordering::Equal => BigIntExp::new(self.exp, &self.data - &rhs.data),
+            Ordering::Less => {
+                let de = (rhs.exp - self.exp) as u32;
+                let base_pow_de: BigInt = BigInt::from(BASE).pow(de);
+                BigIntExp::new(self.exp, &self.data - &rhs.data * base_pow_de)
+            }
+            Ordering::Greater => {
+                let de = (self.exp - rhs.exp) as u32;
+                let base_pow_de: BigInt = BigInt::from(BASE).pow(de);
+                BigIntExp::new(rhs.exp, &self.data * base_pow_de - &rhs.data)
+            }
+        }
     }
 }
 
@@ -245,23 +262,20 @@ impl<const BASE: Base> Signed for BigIntExp<BASE> {
     }
 
     #[inline]
-    fn abs_sub(&self, _other: &Self) -> Self {
-        todo!();
-        // if *self <= *other {
-        //     Zero::zero()
-        // } else {
-        //     self - other
-        // }
+    fn abs_sub(&self, other: &Self) -> Self {
+        if *self <= *other {
+            Zero::zero()
+        } else {
+            self - other
+        }
     }
 
     #[inline]
     fn signum(&self) -> Self {
-        todo!();
-        // match self.sign {
-        //     Plus => One::one(),
-        //     Minus => -One::one(),
-        //     NoSign => Zero::zero(),
-        // }
+        BigIntExp::<BASE> {
+            exp: 0,
+            data: self.data.signum(),
+        }
     }
 
     #[inline]
