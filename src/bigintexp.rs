@@ -1,8 +1,8 @@
 // `Add`/`Sub` ops may flip from `BigInt` to its `BigUint` magnitude
 #![allow(clippy::suspicious_arithmetic_impl)]
 
-use crate::std_alloc::{String, Vec};
-use crate::{ParseBigIntError, Sign};
+use crate::std_alloc::Vec;
+use crate::{BigIntErrorKind, ParseBigIntError, Sign};
 use core::cmp::Ordering::{self};
 // use core::default::Default;
 use core::fmt;
@@ -20,7 +20,7 @@ type Base = u16; // should be at least 2
 
 /// A big signed integer type times BASE to the power of an integer exponent.
 pub struct BigIntExp<const BASE: Base> {
-    exp: u32,
+    exp: i32,
     data: BigInt,
 }
 
@@ -182,12 +182,18 @@ impl<const BASE: Base> One for BigIntExp<BASE> {
 
 impl<const BASE: Base> Num for BigIntExp<BASE> {
     type FromStrRadixErr = ParseBigIntError;
-    fn from_str_radix(
-        _s: &str,
-        _radix: u32,
-    ) -> Result<Self, <Self as num_traits::Num>::FromStrRadixErr> {
-        // also convert from radix to BASE.
-        todo!()
+    fn from_str_radix(_s: &str, radix: u32) -> Result<Self, ParseBigIntError> {
+        if radix != BASE as u32 {
+            // FIXME: also convert from radix to BASE.
+            Err(ParseBigIntError {
+                kind: BigIntErrorKind::InvalidDigit,
+            })
+        } else {
+            match BigInt::from_str_radix(s, BASE as u32) {
+                Err(e) => Err(e),
+                Ok(bi) => Ok(Self::from(bi)),
+            }
+        }
     }
 }
 
@@ -471,8 +477,14 @@ impl<const BASE: Base> Roots for BigIntExp<BASE> {
     }
 }
 
+impl<const BASE: Base> From<BigInt> for BigIntExp<BASE> {
+    fn from(data: BigInt) -> Self {
+        Self::new(0, data)
+    }
+}
+
 impl<const BASE: Base> BigIntExp<BASE> {
-    pub fn new(exp: u32, data: BigInt) -> Self {
+    pub fn new(exp: i32, data: BigInt) -> Self {
         let mut res = BigIntExp::<BASE> { exp, data };
         res.normalize();
         res
@@ -494,33 +506,23 @@ impl<const BASE: Base> BigIntExp<BASE> {
             }
         }
     }
-}
 
-/// A generic trait for converting a value to a [`BigIntExp`].
-/// This should always succeed
-/// when converting from any integer or numeric primitive.
-pub trait ToBigIntExp<const BASE: Base> {
-    /// Converts the value of `self` to a [`BigIntExp`].
-    fn to_bigintexp(&self) -> Option<BigIntExp<BASE>>;
-}
-
-impl<const BASE: Base> From<BigInt> for BigIntExp<BASE> {
-    fn from(data: BigInt) -> Self {
-        Self::new(0, data)
+    /// Returns the exponent and the BigInt forming the [`BigIntExp`].
+    #[inline]
+    pub fn into(self) -> (i32, BigInt) {
+        (self.exp, self.data)
     }
-}
 
-impl<const BASE: Base> BigIntExp<BASE> {
-    /// Creates a [`BigIntExp`] from digit bytes in using `BASE`.
+    /// Creates a [`BigIntExp`] from digit bytes using `BASE`.
     ///
     /// # Examples
     ///
     /// ```
-    /// use num_bigint::{BigIntExp, ToBigInt};
+    /// use num_bigint::{BigIntExp, BigInt};
     ///
-    /// assert_eq!(BigIntExp<10>::parse_bytes(b"1234"), ToBigIntExp::to_bigintexp(&1234));
-    /// assert_eq!(BigIntExp<16>::parse_bytes(b"ABCD"), ToBigIntExp::to_bigintexp(&0xABCD));
-    /// assert_eq!(BigIntExp<16>::parse_bytes(b"G"), None);
+    /// assert_eq!(BigIntExp::<10>::parse_bytes(b"1234"), Some(BigIntExp::from(BigInt::from(1234))));
+    /// assert_eq!(BigIntExp::<16>::parse_bytes(b"ABCD"), Some(BigIntExp::from(BigInt::from(0xABCD))));
+    /// assert_eq!(BigIntExp::<16>::parse_bytes(b"G"), None);
     /// ```
     #[inline]
     pub fn parse_bytes(buf: &[u8]) -> Option<Self> {
@@ -601,13 +603,6 @@ impl<const BASE: Base> BigIntExp<BASE> {
         // (self.sign, self.data.to_bytes_le())
     }
 
-    /// Returns the exponent and the BigInt forming the [`BigIntExp`].
-    #[inline]
-    pub fn into(self) -> (u32, BigInt) {
-        (self.exp, self.data)
-    }
-
-
     #[inline]
     pub fn checked_add(&self, v: &Self) -> Option<Self> {
         Some(self + v)
@@ -632,14 +627,24 @@ impl<const BASE: Base> BigIntExp<BASE> {
     }
 
     /// Returns `self ^ exponent`.
-    pub fn pow(&self, exponent: u32) -> Self {
+    pub fn pow(&self, exponent: i32) -> Self {
         // (data * BASE ** exp) ** exponent = data ** exponent * BASE ** (exp*exponent)
-        if exponent == 0 {
-            One::one()
-        } else {
-            BigIntExp::<BASE> {
-                exp: self.exp * exponent, // CHECKME: overflow
-                data: self.data.clone().pow(exponent),
+        match exponent.signum() {
+            0 => One::one(),
+            1 => {
+                BigIntExp::<BASE> {
+                    exp: self.exp * exponent, // CHECKME: overflow
+                    data: self.data.clone().pow(exponent as u32),
+                }
+            }
+            -1 => {
+                BigIntExp::<BASE> {
+                    exp: -self.exp * exponent,                       // CHECKME: overflow
+                    data: self.data.clone().pow((-exponent) as u32), // CHECKME: overflow
+                }
+            }
+            _ => {
+                unreachable!()
             }
         }
     }
@@ -675,4 +680,3 @@ impl<const BASE: Base> BigIntExp<BASE> {
         Roots::nth_root(self, n)
     }
 }
-

@@ -230,6 +230,8 @@ pub use crate::bigint::BigInt;
 pub use crate::bigint::Sign;
 pub use crate::bigint::ToBigInt;
 
+pub use crate::bigintexp::BigIntExp;
+
 #[cfg(feature = "rand")]
 pub use crate::bigrand::{RandBigInt, RandomBits, UniformBigInt, UniformBigUint};
 
