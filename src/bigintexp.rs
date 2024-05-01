@@ -1,14 +1,14 @@
 // `Add`/`Sub` ops may flip from `BigInt` to its `BigUint` magnitude
 #![allow(clippy::suspicious_arithmetic_impl)]
 
-use crate::std_alloc::Vec;
-use crate::{ParseBigIntError, Sign};
+use crate::ParseBigIntError;
 use core::cmp::Ordering::{self};
 // use core::default::Default;
 use core::fmt;
 use core::hash;
 use core::ops::{Add, Div, Mul, Neg, Rem, Sub};
 use core::str;
+use std::string::String;
 
 // use alloc::string::ToString;
 use num_integer::{Integer, Roots};
@@ -98,9 +98,29 @@ impl<const BASE: Base> fmt::Display for BigIntExp<BASE> {
     /// let i = BigIntExp::<16>::parse_bytes(b"ff").unwrap();
     /// assert_eq!(i.to_string(), "ff");
     /// ```
-    fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        todo!();
-        // f.pad_integral(!self.is_negative(), "", &self.data.to_str_radix(BASE as u32))
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut tmp = self.data.abs().to_str_radix(BASE as u32);
+        if self.exp > 0 {
+            for _ in 0..self.exp {
+                tmp.push('0');
+            }
+        } else {
+            // insert or prepend a decimal dot.
+            let insert_dot_pos = tmp.len() as i32 + self.exp;
+            if insert_dot_pos > 0 {
+                if insert_dot_pos < tmp.len() as i32 {
+                    tmp.insert(insert_dot_pos as usize, '.');
+                }
+            } else {
+                let mut prfx = String::from("0.");
+                for _ in 0..-insert_dot_pos {
+                    prfx.push('0');
+                }
+                prfx.push_str(&tmp);
+                tmp = prfx;
+            }
+        }
+        f.pad_integral(!self.is_negative(), "", &tmp)
     }
 }
 
@@ -154,7 +174,14 @@ impl<const BASE: Base> Zero for BigIntExp<BASE> {
 
 impl<const BASE: Base> Mul for BigIntExp<BASE> {
     type Output = Self;
-    fn mul(self, _rhs: BigIntExp<BASE>) -> Self::Output {
+    fn mul(self, _rhs: Self) -> Self::Output {
+        todo!()
+    }
+}
+
+impl<const BASE: Base> Mul for &BigIntExp<BASE> {
+    type Output = BigIntExp<BASE>;
+    fn mul(self, _rhs: Self) -> Self::Output {
         todo!()
     }
 }
@@ -523,79 +550,6 @@ impl<const BASE: Base> BigIntExp<BASE> {
         Self::from_str_radix(s, BASE as u32).ok()
     }
 
-    /// Creates a [`BigInt`]. Each `u8` of the input slice is
-    /// interpreted as one digit of the number
-    /// and must therefore be less than `BASE`.
-    ///
-    /// The bytes are in big-endian byte order.
-    /// `BASE` must be in the range `2...256`.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use num_bigint::{BigInt, Sign};
-    ///
-    /// let inbase190 = vec![15, 33, 125, 12, 14];
-    /// let a = BigIntExp::from_radix_be<190>(Sign::Minus, &inbase190).unwrap();
-    /// assert_eq!(a.to_radix_be(), (Sign:: Minus, inbase190));
-    /// ```
-    pub fn from_radix_be(sign: Sign, buf: &[u8]) -> Option<Self> {
-        let u = BigInt::from_radix_be(sign, buf, BASE as u32)?;
-        Some(BigIntExp::new(0, u))
-    }
-
-    /// Creates and initializes a [`BigInt`]. Each `u8` of the input slice is
-    /// interpreted as one digit of the number
-    /// and must therefore be less than `radix`.
-    ///
-    /// The bytes are in little-endian byte order.
-    /// `BASE` must be in the range `2...256`.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use num_bigint::{BigInt, Sign};
-    ///
-    /// let inbase190 = vec![14, 12, 125, 33, 15];
-    /// let a = BigIntExp::from_radix_be<190>(Sign::Minus, &inbase190).unwrap();
-    /// assert_eq!(a.to_radix_be(), (Sign::Minus, inbase190));
-    /// ```
-    pub fn from_radix_le(sign: Sign, buf: &[u8]) -> Option<Self> {
-        let i = BigInt::from_radix_le(sign, buf, BASE as u32)?;
-        Some(BigIntExp::new(0, i))
-    }
-
-    /// Returns the sign and the byte representation of the [`BigInt`] in big-endian byte order.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use num_bigint::{ToBigInt, Sign};
-    ///
-    /// let i = -1125.to_bigint().unwrap();
-    /// assert_eq!(i.to_bytes_be(), (Sign::Minus, vec![4, 101]));
-    /// ```
-    #[inline]
-    pub fn to_bytes_be(&self) -> (Sign, Vec<u8>) {
-        self.data.to_bytes_be()
-    }
-
-    /// Returns the sign and the byte representation of the [`BigIntExp`] in little-endian byte order.
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use num_bigint::{ToBigInt, Sign};
-    ///
-    /// let i = -1125.to_bigint().unwrap();
-    /// assert_eq!(i.to_bytes_le(), (Sign::Minus, vec![101, 4]));
-    /// ```
-    #[inline]
-    pub fn to_bytes_le(&self) -> (Sign, Vec<u8>) {
-        todo!();
-        // (self.sign, self.data.to_bytes_le())
-    }
-
     #[inline]
     pub fn checked_add(&self, v: &Self) -> Option<Self> {
         Some(self + v)
@@ -608,7 +562,7 @@ impl<const BASE: Base> BigIntExp<BASE> {
 
     #[inline]
     pub fn checked_mul(&self, v: &Self) -> Option<Self> {
-        Some(self.clone() * v.clone())
+        Some(self * v)
     }
 
     #[inline]
