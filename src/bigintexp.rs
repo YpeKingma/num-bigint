@@ -8,7 +8,6 @@ use core::fmt;
 use core::hash;
 use core::ops::{Add, Div, Mul, Neg, Rem, Sub};
 use core::str;
-// use static_assertions;
 use std::string::String;
 
 // use alloc::string::ToString;
@@ -221,7 +220,7 @@ impl<const BASE: Base> Num for BigIntExp<BASE> {
 
 impl<const BASE: Base> Div for BigIntExp<BASE> {
     type Output = Self;
-    fn div(self, rhs: Self) -> Self {
+    fn div(self, rhs: BigIntExp<BASE>) -> Self {
         BigIntExp::<BASE>::new(self.exp - rhs.exp, self.data.div(rhs.data))
     }
 }
@@ -415,7 +414,7 @@ impl<const BASE: Base> Integer for BigIntExp<BASE> {
         if self.exp < 0 {
             false
         } else if BASE.is_even() {
-            !self.data.is_zero()
+            ! self.data.is_zero()
         } else {
             self.data.is_even()
         }
@@ -487,13 +486,11 @@ impl<const BASE: Base> From<BigInt> for BigIntExp<BASE> {
     }
 }
 
-
-
 impl<const BASE: Base> BigIntExp<BASE> {
-
     pub fn new(exp: i32, data: BigInt) -> Self {
-        static_assertions::const_assert!(BASE >= 2);
-        assert!(BASE >= 2);
+        if BASE < 2 {
+            panic!("BASE smaller than 2");
+        }
         let mut res = BigIntExp::<BASE> { exp, data };
         res.normalize();
         res
@@ -579,7 +576,9 @@ impl<const BASE: Base> BigIntExp<BASE> {
                     data: self.data.clone().pow((-exponent) as u32), // CHECKME: overflow
                 }
             }
-            _ => unreachable!(),
+            _ => {
+                unreachable!()
+            }
         }
     }
 

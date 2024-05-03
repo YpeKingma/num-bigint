@@ -44,8 +44,6 @@ name = "shootout-pidigits"
 
 [dependencies]
 
-static_assertions = "0.1.1"
-
 [dependencies.num-integer]
 version = "0.1.42"
 default-features = false

@@ -83,9 +83,6 @@
 //!
 //! The `num-bigint` crate is tested for rustc 1.60 and greater.
 
-#![feature(generic_const_exprs)]
-
-
 #![doc(html_root_url = "https://docs.rs/num-bigint/0.4")]
 #![warn(rust_2018_idioms)]
 #![no_std]
