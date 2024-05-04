@@ -1,11 +1,10 @@
-// `Add`/`Sub` ops may flip from `BigInt` to its `BigUint` magnitude
-#![allow(clippy::suspicious_arithmetic_impl)]
-
 use crate::ParseBigIntError;
 use core::cmp::Ordering::{self};
+use core::f64::consts::LN_2;
 // use core::default::Default;
 use core::fmt;
 use core::hash;
+use core::iter::Sum;
 use core::ops::{Add, Div, Mul, Neg, Rem, Sub};
 use core::str;
 use std::string::String;
@@ -18,7 +17,7 @@ use crate::bigint::BigInt;
 
 type Base = u16; // should be at least 2
 
-/// A big signed integer type times BASE to the power of an integer exponent.
+/// A number represented by a BigInt, a generic base and an exponent.
 pub struct BigIntExp<const BASE: Base> {
     exp: i32,
     data: BigInt,
@@ -174,6 +173,24 @@ impl<const BASE: Base> Zero for BigIntExp<BASE> {
     }
 }
 
+impl<'a, const BASE: Base> Sum<&'a BigIntExp<BASE>> for BigIntExp<BASE> {
+    fn sum<I>(mut iter: I) -> Self
+    where
+        I: Iterator<Item = &'a Self>,
+    {
+        if let Some(first) = iter.next() {
+            let mut res = first.clone();
+            for bie in iter {
+                res.add_non_normalized(bie);
+            }
+            res.normalize();
+            res
+        } else {
+            Self::zero()
+        }
+    }
+}
+
 impl<const BASE: Base> Mul for BigIntExp<BASE> {
     type Output = Self;
     #[inline]
@@ -220,6 +237,7 @@ impl<const BASE: Base> Num for BigIntExp<BASE> {
 
 impl<const BASE: Base> Div for BigIntExp<BASE> {
     type Output = Self;
+    #[allow(clippy::suspicious_arithmetic_impl)]
     fn div(self, rhs: BigIntExp<BASE>) -> Self {
         BigIntExp::<BASE>::new(self.exp - rhs.exp, self.data.div(rhs.data))
     }
@@ -414,7 +432,7 @@ impl<const BASE: Base> Integer for BigIntExp<BASE> {
         if self.exp < 0 {
             false
         } else if BASE.is_even() {
-            ! self.data.is_zero()
+            !self.data.is_zero()
         } else {
             self.data.is_even()
         }
@@ -450,6 +468,7 @@ impl<const BASE: Base> Integer for BigIntExp<BASE> {
 
 impl<const BASE: Base> Rem for BigIntExp<BASE> {
     type Output = Self;
+    #[allow(clippy::suspicious_arithmetic_impl)]
     fn rem(self, other: Self) -> Self {
         let (_quot, rem) = self.data.div_mod_floor(&other.data);
         let de = self.exp - other.exp;
@@ -487,6 +506,7 @@ impl<const BASE: Base> From<BigInt> for BigIntExp<BASE> {
 }
 
 impl<const BASE: Base> BigIntExp<BASE> {
+    /// Creates a [`BigIntExp`] from a Bigint, the generic base and an exponent.
     pub fn new(exp: i32, data: BigInt) -> Self {
         if BASE < 2 {
             panic!("BASE smaller than 2");
@@ -513,13 +533,72 @@ impl<const BASE: Base> BigIntExp<BASE> {
         }
     }
 
+    fn add_non_normalized(&mut self, rhs: &Self) {
+        match self.exp.cmp(&rhs.exp) {
+            Ordering::Equal => {
+                self.data += &rhs.data;
+            }
+            Ordering::Less => {
+                let base_dp = BigInt::from(BASE).pow((rhs.exp - self.exp) as u32);
+                self.data += &rhs.data * base_dp;
+            }
+            Ordering::Greater => {
+                let base_dp = BigInt::from(BASE).pow((self.exp - rhs.exp) as u32);
+                self.data = &self.data * base_dp + &rhs.data;
+                self.exp = rhs.exp;
+            }
+        };
+    }
+
     /// Returns the exponent and the BigInt forming the [`BigIntExp`].
+    /// These may differ from the arguments provided to [`Self::new`].
     #[inline]
     pub fn into(self) -> (i32, BigInt) {
         (self.exp, self.data)
     }
 
-    /// Creates a [`BigIntExp`] from digit bytes using `BASE`.
+    // Round to BASE ** exponent
+    #[must_use]
+    pub fn round(mut self, exponent: i32) -> Self {
+        if exponent > self.exp {
+            // divide self.big_int by BASE ** (pow_ten - self.pow_ten)
+            let base_dp_bi: BigInt = BigInt::from(BASE).pow((exponent - self.exp) as u32);
+            let q = num::rational::Ratio::<BigInt>::new(self.data, base_dp_bi);
+            self.data = q.round().to_integer();
+            self.exp = exponent;
+            self.normalize();
+        }
+        self
+    }
+
+    #[must_use]
+    pub fn divide(self, rhs: usize, result_digits: u32) -> Option<Self> {
+        // The number of valid bits/digits in self is unknown,
+        // so the number of valid result bits/digits in the division result must be provided.
+        if rhs == 0 {
+            None
+        } else if self.data.is_zero() {
+            Some(self)
+        } else {
+            // Avoid truncation towards zero for small big_int, e.g. a power of 10 has big_int 1.
+            // Multiply self.big_int by 10 until the division result has at least result_digits.
+            let rhs_bits = f64::from(usize::BITS as i32 - rhs.leading_zeros() as i32);
+            let ln_base = f64::ln(BASE as f64);
+            let result_bits = f64::from(result_digits) * ln_base / LN_2;
+            let min_bits_bi = (result_bits + rhs_bits).ceil() as i32;
+            let mut big_int = self.data.clone();
+            let mut exp = self.exp;
+            while (big_int.bits() as i32) < min_bits_bi {
+                // CHECKME: compute exp directly using LN_10 / LN_2 and initial bi.bits()
+                // instead of repeating *= BASE  ?
+                big_int *= BASE;
+                exp -= 1;
+            }
+            Some(Self::new(exp, big_int / rhs))
+        }
+    }
+
+    /// Creates a [`BigIntExp`] from digit bytes using [`BASE`].
     ///
     /// # Examples
     ///
