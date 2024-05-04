@@ -1,7 +1,6 @@
 use crate::ParseBigIntError;
 use core::cmp::Ordering::{self};
 use core::f64::consts::LN_2;
-// use core::default::Default;
 use core::fmt;
 use core::hash;
 use core::iter::Sum;
@@ -9,8 +8,8 @@ use core::ops::{Add, Div, Mul, Neg, Rem, Sub};
 use core::str;
 use std::string::String;
 
-// use alloc::string::ToString;
 use num_integer::{Integer, Roots};
+use num_traits::float::FloatCore;
 use num_traits::{Num, One, Pow, Signed, Zero};
 
 use crate::bigint::BigInt;
@@ -275,7 +274,7 @@ impl<const BASE: Base> Signed for BigIntExp<BASE> {
     fn abs(&self) -> BigIntExp<BASE> {
         BigIntExp::<BASE> {
             exp: self.exp,
-            data: self.data.abs(), 
+            data: self.data.abs(),
         }
     }
 
@@ -681,5 +680,21 @@ impl<const BASE: Base> BigIntExp<BASE> {
     /// See [`num_integer::Roots::nth_root()`].
     pub fn nth_root(&self, n: u32) -> Self {
         Roots::nth_root(self, n)
+    }
+}
+
+impl BigIntExp<2> {
+    pub fn from_64(n: f64) -> Option<Self> {
+        if (!n.is_finite()) || n.is_nan() {
+            None
+        } else {
+            let (mantissa, base2_exponent, sign) = FloatCore::integer_decode(n);
+            let bi = if sign == 0 {
+                BigInt::from(mantissa)
+            } else {
+                -BigInt::from(mantissa)
+            };
+            Some(Self::new(base2_exponent as i32, bi))
+        }
     }
 }
