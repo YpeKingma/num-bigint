@@ -246,7 +246,7 @@ impl<const BASE: Base> Div for BigIntExp<BASE> {
 impl<const BASE: Base> Sub for BigIntExp<BASE> {
     type Output = Self;
     #[inline]
-    fn sub(self, rhs: BigIntExp<BASE>) -> <Self as Sub<BigIntExp<BASE>>>::Output {
+    fn sub(self, rhs: BigIntExp<BASE>) -> Self {
         &self - &rhs
     }
 }
@@ -275,7 +275,7 @@ impl<const BASE: Base> Signed for BigIntExp<BASE> {
     fn abs(&self) -> BigIntExp<BASE> {
         BigIntExp::<BASE> {
             exp: self.exp,
-            data: self.data.abs(),
+            data: self.data.abs(), 
         }
     }
 
@@ -313,18 +313,9 @@ impl<const BASE: Base> Neg for BigIntExp<BASE> {
     type Output = BigIntExp<BASE>;
 
     #[inline]
-    fn neg(mut self) -> BigIntExp<BASE> {
+    fn neg(mut self) -> Self::Output {
         self.data = -self.data;
         self
-    }
-}
-
-impl<const BASE: Base> Neg for &BigIntExp<BASE> {
-    type Output = BigIntExp<BASE>;
-
-    #[inline]
-    fn neg(self) -> BigIntExp<BASE> {
-        -self.clone()
     }
 }
 
@@ -507,10 +498,10 @@ impl<const BASE: Base> From<BigInt> for BigIntExp<BASE> {
 
 impl<const BASE: Base> BigIntExp<BASE> {
     /// Creates a [`BigIntExp`] from a Bigint, the generic base and an exponent.
+    /// Panics when BASE < 2.
+    #[inline]
     pub fn new(exp: i32, data: BigInt) -> Self {
-        if BASE < 2 {
-            panic!("BASE smaller than 2");
-        }
+        assert!(BASE >= 2);
         let mut res = BigIntExp::<BASE> { exp, data };
         res.normalize();
         res
