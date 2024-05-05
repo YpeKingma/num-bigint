@@ -6,8 +6,10 @@ use core::hash;
 use core::iter::Sum;
 use core::ops::{Add, Div, Mul, Neg, Rem, Sub};
 use core::str;
+use std::intrinsics::floorf64;
 use std::string::String;
 
+use num::rational::Ratio;
 use num_integer::{Integer, Roots};
 use num_traits::float::FloatCore;
 use num_traits::{Num, One, Pow, Signed, Zero};
@@ -685,16 +687,55 @@ impl<const BASE: Base> BigIntExp<BASE> {
 
 impl BigIntExp<2> {
     pub fn from_64(n: f64) -> Option<Self> {
-        if (!n.is_finite()) || n.is_nan() {
+        if !n.is_finite() {
             None
         } else {
             let (mantissa, base2_exponent, sign) = FloatCore::integer_decode(n);
-            let bi = if sign == 0 {
+            let bi = if sign >= 0 {
                 BigInt::from(mantissa)
             } else {
                 -BigInt::from(mantissa)
             };
             Some(Self::new(base2_exponent as i32, bi))
         }
+    }
+}
+
+impl<const BASE_FROM: Base> BigIntExp<BASE_FROM> {
+    /// Provide the value which is encoded in BASE_FROM, rebased to BASE_TO,
+    /// using `max_digits` in BASE_TO for the result.
+    /// Panics when BASE_TO < 2.
+    /// FIXME: this needs testing.
+    pub fn rebase<const BASE_TO: Base>(&self, max_digits: u32) -> BigIntExp<BASE_TO> {
+        assert!(BASE_TO >= 2);
+        let mut res = BigIntExp::<BASE_TO> {
+            exp: self.exp,
+            data: self.data.clone(),
+        };
+        if BASE_FROM != BASE_TO {
+            // recompute res.exp and res.data, such that up to max_digits in BASE_TO:
+            //   self.data * (BASE_FROM ** self.exp) =~= res.data * (BASE_TO ** res.exp)
+            //
+            // With self.data == res.data:
+            //   self.exp * ln(BASE_FROM) == res.exp * ln(BASE_TO)
+            // or:
+            //   res.exp = self.exp * ln(BASE_FROM) / ln(BASE_TO)
+            //
+            let ln_fac = f64::ln(BASE_FROM as f64) / f64::ln(BASE_TO as f64);
+            // first take the floor of this
+            res.exp = f64::floor(res.exp as f64 * ln_fac) as i32;
+            // then adapt res.data for the error in taking the floor:
+            //   res.data = self.data * (BASE_FROM ** self.exp) / (BASE_TO ** res.exp)
+            // compute the factor (BASE_FROM ** self.exp) / (BASE_TO ** res.exp)
+            // and multiply it into res.data, providing max_digits in the result
+            assert!(self.exp >= 0); // TBD: negative case
+            let nom = BigInt::from(BASE_FROM).pow(self.exp as u32) * res.data;
+            assert!(res.exp >= 0); // TBD: negative case
+            let den = BigInt::from(BASE_TO).pow(res.exp as u32);
+            let res.data = Ratio::<BigInt>::from((nom, den)).round();
+            // round this to max_digits in BASE_TO:
+            res.round(max_digits);
+        }
+        res
     }
 }
