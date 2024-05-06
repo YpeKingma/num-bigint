@@ -705,11 +705,12 @@ impl BigIntExp<2> {
 }
 
 impl<const BASE_FROM: Base> BigIntExp<BASE_FROM> {
-    /// Provide the value that is encoded in BASE_FROM, rebased to BASE_TO,
+    /// Provide the value that is encoded in BASE_FROM rebased to BASE_TO,
     /// using at least `result_digits` in BASE_TO for the result.
-    /// Panics when BASE_TO < 2.
-    /// Panics when result_digits == 0.
     /// FIXME: this needs testing.
+    /// # Panics
+    /// Panics when ```BASE_TO < 2```.
+    /// Panics when ```result_digits == 0```.
     pub fn rebase<const BASE_TO: Base>(&self, result_digits: u32) -> BigIntExp<BASE_TO> {
         assert!(BASE_TO >= 2);
         assert!(result_digits > 0);
