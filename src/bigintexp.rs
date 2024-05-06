@@ -17,7 +17,8 @@ use crate::bigint::BigInt;
 
 type Base = u16; // should be at least 2
 
-/// A number represented by a BigInt, a generic base and an exponent.
+/// A number represented by a [`BigInt`] times a base to the power of an exponent.
+/// The base is generic.
 pub struct BigIntExp<const BASE: Base> {
     exp: i32,
     data: BigInt,
@@ -685,7 +686,10 @@ impl<const BASE: Base> BigIntExp<BASE> {
 }
 
 impl BigIntExp<2> {
-    pub fn from_64(n: f64) -> Option<Self> {
+    pub fn from_float<T>(n: T) -> Option<Self>
+    where
+        T: FloatCore,
+    {
         if !n.is_finite() {
             None
         } else {
@@ -701,7 +705,7 @@ impl BigIntExp<2> {
 }
 
 impl<const BASE_FROM: Base> BigIntExp<BASE_FROM> {
-    /// Provide the value which is encoded in BASE_FROM, rebased to BASE_TO,
+    /// Provide the value that is encoded in BASE_FROM, rebased to BASE_TO,
     /// using at least `result_digits` in BASE_TO for the result.
     /// Panics when BASE_TO < 2.
     /// Panics when result_digits == 0.
@@ -709,10 +713,13 @@ impl<const BASE_FROM: Base> BigIntExp<BASE_FROM> {
     pub fn rebase<const BASE_TO: Base>(&self, result_digits: u32) -> BigIntExp<BASE_TO> {
         assert!(BASE_TO >= 2);
         assert!(result_digits > 0);
-        let mut res_exp = self.exp;
-        let res_data: BigInt;
-        if BASE_FROM != BASE_TO {
-            // recompute res.exp and res.data, such that up to max_digits in BASE_TO:
+        if BASE_FROM == BASE_TO {
+            BigIntExp::<BASE_TO> {
+                exp: self.exp,
+                data: self.data.clone(), // ignore result_digits
+            }
+        } else {
+            // compute res.exp and res.data, such that up to max_digits in BASE_TO:
             //   self.data * (BASE_FROM ** self.exp) =~= res.data * (BASE_TO ** res.exp)
             //
             // With self.data == res.data:
@@ -722,33 +729,29 @@ impl<const BASE_FROM: Base> BigIntExp<BASE_FROM> {
             //
             let ln_fac = f64::ln(BASE_FROM as f64) / f64::ln(BASE_TO as f64);
             // first take the floor of this
-            res_exp = f64::floor(res_exp as f64 * ln_fac) as i32;
-            // then adapt res.data for the error in taking the floor:
+            let mut res_exp = f64::floor(self.exp as f64 * ln_fac) as i32;
+            // Adapt res.data for the error in taking the floor:
             //   res.data = self.data * (BASE_FROM ** self.exp) / (BASE_TO ** res.exp)
             // compute the factor (BASE_FROM ** self.exp) / (BASE_TO ** res.exp)
             // and multiply it into res.data, providing max_digits in the result
             assert!(self.exp >= 0); // TBD: negative case
-            let nom = BigInt::from(BASE_FROM).pow(self.exp as u32) * self.data;
-            // add digits to nom so division by den will have max_digits in BASE_TO,
+            let mut nom = BigInt::from(BASE_FROM).pow(self.exp as u32) * &self.data;
+            // add digits to nom divided by den will have result_digits in BASE_TO,
             // and compensate for these digits in res.exp.
             let bits_for_max_digits = f64::ln(BASE_TO as f64) * (result_digits as f64) / LN_2;
-            let nom_bits = nom.bits();
             assert!(res_exp >= 0); // TBD: negative case
             let den = BigInt::from(BASE_TO).pow(res_exp as u32);
-            let den_bits = den.bits();
-            while den_bits as f64 + bits_for_max_digits < nom_bits as f64 {
-                nom *= BASE_TO;
+            let den_bits = den.bits() as f64;
+            while den_bits + bits_for_max_digits < nom.bits() as f64 {
+                nom *= BASE_TO; // FIXME: try and use pow() instead of looping.
                 res_exp -= 1;
             }
-
-            res_data = Ratio::<BigInt>::from((nom, den)).round().to_integer();
-            // round this to max_digits in BASE_TO:
-        } else {
-            res_data = self.data.clone();
-        }
-        BigIntExp::<BASE_TO> {
-            exp: res_exp,
-            data: res_data,
+            let mut res = BigIntExp::<BASE_TO> {
+                exp: res_exp,
+                data: Ratio::<BigInt>::from((nom, den)).round().to_integer(),
+            };
+            res.normalize();
+            res
         }
     }
 }
