@@ -6,7 +6,6 @@ use core::hash;
 use core::iter::Sum;
 use core::ops::{Add, Div, Mul, Neg, Rem, Sub};
 use core::str;
-use std::intrinsics::floorf64;
 use std::string::String;
 
 use num::rational::Ratio;
@@ -703,15 +702,15 @@ impl BigIntExp<2> {
 
 impl<const BASE_FROM: Base> BigIntExp<BASE_FROM> {
     /// Provide the value which is encoded in BASE_FROM, rebased to BASE_TO,
-    /// using `max_digits` in BASE_TO for the result.
+    /// using at least `result_digits` in BASE_TO for the result.
     /// Panics when BASE_TO < 2.
+    /// Panics when result_digits == 0.
     /// FIXME: this needs testing.
-    pub fn rebase<const BASE_TO: Base>(&self, max_digits: u32) -> BigIntExp<BASE_TO> {
+    pub fn rebase<const BASE_TO: Base>(&self, result_digits: u32) -> BigIntExp<BASE_TO> {
         assert!(BASE_TO >= 2);
-        let mut res = BigIntExp::<BASE_TO> {
-            exp: self.exp,
-            data: self.data.clone(),
-        };
+        assert!(result_digits > 0);
+        let mut res_exp = self.exp;
+        let res_data: BigInt;
         if BASE_FROM != BASE_TO {
             // recompute res.exp and res.data, such that up to max_digits in BASE_TO:
             //   self.data * (BASE_FROM ** self.exp) =~= res.data * (BASE_TO ** res.exp)
@@ -723,19 +722,33 @@ impl<const BASE_FROM: Base> BigIntExp<BASE_FROM> {
             //
             let ln_fac = f64::ln(BASE_FROM as f64) / f64::ln(BASE_TO as f64);
             // first take the floor of this
-            res.exp = f64::floor(res.exp as f64 * ln_fac) as i32;
+            res_exp = f64::floor(res_exp as f64 * ln_fac) as i32;
             // then adapt res.data for the error in taking the floor:
             //   res.data = self.data * (BASE_FROM ** self.exp) / (BASE_TO ** res.exp)
             // compute the factor (BASE_FROM ** self.exp) / (BASE_TO ** res.exp)
             // and multiply it into res.data, providing max_digits in the result
             assert!(self.exp >= 0); // TBD: negative case
-            let nom = BigInt::from(BASE_FROM).pow(self.exp as u32) * res.data;
-            assert!(res.exp >= 0); // TBD: negative case
-            let den = BigInt::from(BASE_TO).pow(res.exp as u32);
-            let res.data = Ratio::<BigInt>::from((nom, den)).round();
+            let nom = BigInt::from(BASE_FROM).pow(self.exp as u32) * self.data;
+            // add digits to nom so division by den will have max_digits in BASE_TO,
+            // and compensate for these digits in res.exp.
+            let bits_for_max_digits = f64::ln(BASE_TO as f64) * (result_digits as f64) / LN_2;
+            let nom_bits = nom.bits();
+            assert!(res_exp >= 0); // TBD: negative case
+            let den = BigInt::from(BASE_TO).pow(res_exp as u32);
+            let den_bits = den.bits();
+            while den_bits as f64 + bits_for_max_digits < nom_bits as f64 {
+                nom *= BASE_TO;
+                res_exp -= 1;
+            }
+
+            res_data = Ratio::<BigInt>::from((nom, den)).round().to_integer();
             // round this to max_digits in BASE_TO:
-            res.round(max_digits);
+        } else {
+            res_data = self.data.clone();
         }
-        res
+        BigIntExp::<BASE_TO> {
+            exp: res_exp,
+            data: res_data,
+        }
     }
 }
