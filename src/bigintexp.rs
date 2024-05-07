@@ -1,4 +1,4 @@
-use crate::ParseBigIntError;
+use crate::{bigint, ParseBigIntError};
 use core::cmp::Ordering::{self};
 use core::f64::consts::LN_2;
 use core::fmt;
@@ -15,7 +15,10 @@ use num_traits::{Num, One, Pow, Signed, Zero};
 
 use crate::bigint::BigInt;
 
-type Base = u16; // should be at least 2
+/// Type for the base of the exponent.
+/// This should be at least 2.
+/// u16 allows 256 which is the maximum expected useful value.
+pub type Base = u16;
 
 /// A number represented by a [`BigInt`] times a base to the power of an exponent.
 /// The base is generic.
@@ -68,8 +71,26 @@ impl<const BASE: Base> PartialOrd for BigIntExp<BASE> {
 
 impl<const BASE: Base> Ord for BigIntExp<BASE> {
     #[inline]
-    fn cmp(&self, _other: &BigIntExp<BASE>) -> Ordering {
-        todo!();
+    fn cmp(&self, other: &BigIntExp<BASE>) -> Ordering {
+        use bigint::Sign::*;
+        use Ordering::*;
+        match (self.data.sign(), other.data.sign()) {
+            (Plus, Plus) => match self.exp.cmp(&other.exp) {
+                Less => Less,
+                Equal => self.data.magnitude().cmp(other.data.magnitude()),
+                Greater => Greater,
+            },
+            (Plus, NoSign | Minus) => Greater,
+            (NoSign, Plus) => Less,
+            (NoSign, NoSign) => Equal,
+            (NoSign, Minus) => Greater,
+            (Minus, Plus | NoSign) => Less,
+            (Minus, Minus) => match self.exp.cmp(&other.exp) {
+                Less => Greater,
+                Equal => other.data.magnitude().cmp(self.data.magnitude()),
+                Greater => Less,
+            },
+        }
     }
 }
 
@@ -555,7 +576,7 @@ impl<const BASE: Base> BigIntExp<BASE> {
         if exponent > self.exp {
             // divide self.big_int by BASE ** (pow_ten - self.pow_ten)
             let base_dp_bi: BigInt = BigInt::from(BASE).pow((exponent - self.exp) as u32);
-            let q = num::rational::Ratio::<BigInt>::new(self.data, base_dp_bi);
+            let q = Ratio::<BigInt>::new(self.data, base_dp_bi);
             self.data = q.round().to_integer();
             self.exp = exponent;
             self.normalize();
@@ -736,20 +757,20 @@ impl<const BASE_FROM: Base> BigIntExp<BASE_FROM> {
             // compute the factor (BASE_FROM ** self.exp) / (BASE_TO ** res.exp)
             // and multiply it into res.data, providing max_digits in the result
             assert!(self.exp >= 0); // TBD: negative case
-            let mut nom = BigInt::from(BASE_FROM).pow(self.exp as u32) * &self.data;
+            let mut numer = BigInt::from(BASE_FROM).pow(self.exp as u32) * &self.data;
             // add digits to nom divided by den will have result_digits in BASE_TO,
             // and compensate for these digits in res.exp.
             let bits_for_max_digits = f64::ln(BASE_TO as f64) * (result_digits as f64) / LN_2;
             assert!(res_exp >= 0); // TBD: negative case
-            let den = BigInt::from(BASE_TO).pow(res_exp as u32);
-            let den_bits = den.bits() as f64;
-            while den_bits + bits_for_max_digits < nom.bits() as f64 {
-                nom *= BASE_TO; // FIXME: try and use pow() instead of looping.
+            let denom = BigInt::from(BASE_TO).pow(res_exp as u32);
+            let numer_minimum_bits = denom.bits() as f64 + bits_for_max_digits;
+            while numer_minimum_bits <= numer.bits() as f64 {
+                numer *= BASE_TO; // FIXME: try and use pow() instead of looping.
                 res_exp -= 1;
             }
             let mut res = BigIntExp::<BASE_TO> {
                 exp: res_exp,
-                data: Ratio::<BigInt>::from((nom, den)).round().to_integer(),
+                data: Ratio::<BigInt>::new(numer, denom).round().to_integer(),
             };
             res.normalize();
             res
