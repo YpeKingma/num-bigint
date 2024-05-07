@@ -145,7 +145,7 @@ impl<const BASE: Base> fmt::Display for BigIntExp<BASE> {
     }
 }
 
-// CHECKME: impl fmt::{Binary,Octal,LowerHex,UpperHex}, Not, Not&
+// CHECKME: just like BigInt, impl fmt::{Binary,Octal,LowerHex,UpperHex}, Not, Not&
 
 impl<const BASE: Base> Add for BigIntExp<BASE> {
     type Output = Self;
@@ -252,8 +252,28 @@ impl<const BASE: Base> One for BigIntExp<BASE> {
 impl<const BASE: Base> Num for BigIntExp<BASE> {
     type FromStrRadixErr = ParseBigIntError;
     fn from_str_radix(s: &str, radix: u32) -> Result<Self, ParseBigIntError> {
-        // FIXME: allow a dot.
-        BigInt::from_str_radix(s, radix).map(Self::from)
+        assert!(radix >= 2);
+        if let Some(dot_pos) = s.find('.') {
+            if dot_pos == 0 {
+                return Err(ParseBigIntError {kind: crate::BigIntErrorKind::InvalidDigit});
+            }
+            let mut wn = String::new();
+            wn.push_str(&s[..dot_pos]);
+            wn.push_str(&s[(dot_pos + 1)..]);
+            assert!(BASE as u32 == radix); // FIXME: divide by radix ** (len() - (dot_pos + 1))
+            match BigInt::from_str_radix(&wn, radix) {
+                Err(e) => Err(e),
+                Ok(big_int) => Ok(BigIntExp::new(
+                    ((dot_pos + 1) as i32) - (s.len() as i32),
+                    big_int,
+                )),
+            }
+        } else {
+            match BigInt::from_str_radix(s, radix) {
+                Err(e) => Err(e),
+                Ok(big_int) => Ok(BigIntExp::new(0, big_int)),
+            }
+        }
     }
 }
 
