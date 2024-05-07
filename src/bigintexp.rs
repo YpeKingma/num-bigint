@@ -9,7 +9,7 @@ use core::str;
 use std::string::String;
 
 use num::rational::Ratio;
-use num::FromPrimitive;
+use num::{FromPrimitive, ToPrimitive};
 use num_integer::{Integer, Roots};
 use num_traits::float::FloatCore;
 use num_traits::{Num, One, Pow, Signed, Zero};
@@ -21,7 +21,7 @@ use crate::bigint::BigInt;
 /// u16 allows 256 which is the maximum expected useful value.
 pub type Base = u16;
 
-/// A number represented by a [`BigInt`] times a base to the power of an exponent.
+/// A number with the value of a [`BigInt`] times a base to the power of an exponent.
 /// The base is generic.
 pub struct BigIntExp<const BASE: Base> {
     exp: i32,
@@ -439,24 +439,22 @@ impl<const BASE: Base> Integer for BigIntExp<BASE> {
 
     /// Calculates the Greatest Common Divisor (GCD) of the number and `other`.
     /// The result is always positive.
-    /// # Panics
-    /// When self and other are not whole numbers.
+    ///
+    /// This differs from [`Integer::gcd`] in that
+    /// the values of both numbers are used as exact values,
+    /// even when they are not whole numbers.
     fn gcd(&self, other: &Self) -> Self {
-        assert!(self.is_integer(), "self.is_integer()");
-        assert!(other.is_integer(), "other.is_integer()");
-        // CHECKME:
         let gcd_bi = self.data.gcd(&other.data);
         let min_exp = self.exp.min(other.exp);
         Self::new(min_exp, gcd_bi)
     }
 
     /// Calculates the Lowest Common Multiple (LCM) of the number and `other`.
-    /// # Panics
-    /// When self and other are not whole numbers.
+    ///
+    /// This differs from [`Integer::lcm`] in that
+    /// the values of both numbers are used as exact values,
+    /// even when they are not whole numbers.
     fn lcm(&self, other: &Self) -> Self {
-        assert!(self.is_integer(), "self.is_integer()");
-        assert!(other.is_integer(), "other.is_integer()");
-        // CHECKME:
         let lcm_bi = self.data.lcm(&other.data);
         let max_exp = self.exp.max(other.exp);
         Self::new(max_exp, lcm_bi)
@@ -464,13 +462,15 @@ impl<const BASE: Base> Integer for BigIntExp<BASE> {
 
     /// Calculates the Greatest Common Divisor (GCD) and
     /// Lowest Common Multiple (LCM) together.
-    /// # Panics
-    /// When self and other are not whole numbers.
+    ///
+    /// Potentially more efficient than calling `gcd` and `lcm`
+    /// individually for identical inputs.
+    ///
+    /// This differs from [`Integer::gcd_lcm`] in that
+    /// the values of both numbers are used as exact values,
+    /// even when they are not whole numbers.
     #[inline]
     fn gcd_lcm(&self, other: &Self) -> (Self, Self) {
-        assert!(self.is_integer(), "self.is_integer()");
-        assert!(other.is_integer(), "other.is_integer()");
-        // CHECKME:
         let (gcd_bi, lcm_bi) = self.data.gcd_lcm(&other.data);
         let min_exp = self.exp.min(other.exp);
         let max_exp = self.exp.max(other.exp);
@@ -478,8 +478,10 @@ impl<const BASE: Base> Integer for BigIntExp<BASE> {
     }
 
     /// Greatest common divisor, least common multiple, and Bézout coefficients.
-    /// # Panics
-    /// When self and other are not whole numbers.
+    ///
+    /// This differs from [`Integer::extended_gcd_lcm`] in that
+    /// the values of both numbers are used as exact values,
+    /// even when they are not whole numbers.
     #[inline]
     fn extended_gcd_lcm(&self, other: &Self) -> (num_integer::ExtendedGcd<Self>, Self) {
         assert!(self.is_integer(), "self.is_integer()");
@@ -498,7 +500,7 @@ impl<const BASE: Base> Integer for BigIntExp<BASE> {
         self.is_multiple_of(other)
     }
 
-    /// Returns `true` if the number is a multiple of `other`.
+    /// Returns `true` if the value is a multiple of the value of `other`.
     #[inline]
     fn is_multiple_of(&self, other: &Self) -> bool {
         // CHECKME:
@@ -812,14 +814,15 @@ impl<const BASE: Base> BigIntExp<BASE> {
 }
 
 impl BigIntExp<2> {
-    pub fn from_float<T>(n: T) -> Option<Self>
+    // Encode a finite float as a BigIntExp<2>.
+    pub fn from_float<T>(f: T) -> Option<Self>
     where
         T: FloatCore,
     {
-        if !n.is_finite() {
+        if !f.is_finite() {
             None
         } else {
-            let (mantissa, base2_exponent, sign) = FloatCore::integer_decode(n);
+            let (mantissa, base2_exponent, sign) = FloatCore::integer_decode(f);
             let bi = if sign >= 0 {
                 BigInt::from(mantissa)
             } else {
@@ -830,17 +833,48 @@ impl BigIntExp<2> {
     }
 }
 
+impl BigIntExp<2> {
+    /// Transform a BigIntExp into an f64.
+    pub fn to_f64(&self) -> f64 {
+        use crate::Sign::*;
+        let s = match self.data.sign() {
+            Plus => 1f64,
+            Minus => -1f64,
+            NoSign => return 0f64,
+        };
+        let magnitude = self.data.magnitude();
+        assert!(magnitude.bits() < i32::MAX as u64);
+        let exponent2 = self.exp + magnitude.bits() as i32;
+        if exponent2 > f64::MAX_EXP {
+            if s == 1f64 {
+                f64::INFINITY
+            } else {
+                f64::NEG_INFINITY
+            }
+        } else {
+            let mantissa = if magnitude.bits() > f64::MANTISSA_DIGITS as u64 {
+                // keep only the most significant bits of mag for the mantissa
+                let bytes = magnitude.to_bytes_le();
+                todo!();
+            } else {
+                magnitude.to_f64().expect(&format!("{magnitude:?}"))
+            };
+            s * mantissa * 2f64.powi(exponent2)
+        }
+    }
+}
+
 impl<const BASE_FROM: Base> BigIntExp<BASE_FROM> {
-    /// Provide the value that is encoded in BASE_FROM rebased to BASE_TO,
+    /// Provide the value that is encoded in BASE_FROM re-encoded in BASE_TO,
     /// using at least `result_digits` in BASE_TO for the result.
+    ///
     /// FIXME: this needs testing.
     /// # Panics
     /// Panics when ```BASE_TO < 2```.
-    /// Panics when ```result_digits == 0```.
-    pub fn rebase<const BASE_TO: Base>(&self, result_digits: u32) -> BigIntExp<BASE_TO> {
+    pub fn to_base<const BASE_TO: Base>(&self, result_digits: u32) -> BigIntExp<BASE_TO> {
         assert!(BASE_TO >= 2);
-        assert!(result_digits > 0);
         if BASE_FROM == BASE_TO {
+            // cannot clone directly, even with BASE_FROM == BASE_TO :
             BigIntExp::<BASE_TO> {
                 exp: self.exp,
                 data: self.data.clone(), // ignore result_digits
@@ -865,7 +899,8 @@ impl<const BASE_FROM: Base> BigIntExp<BASE_FROM> {
             let mut numer = BigInt::from(BASE_FROM).pow(self.exp as u32) * &self.data;
             // add digits to nom divided by den will have result_digits in BASE_TO,
             // and compensate for these digits in res.exp.
-            let bits_for_max_digits = f64::ln(BASE_TO as f64) * (result_digits as f64) / LN_2;
+            let rd = result_digits.max(1) as f64;
+            let bits_for_max_digits = f64::ln(BASE_TO as f64) * rd / LN_2;
             assert!(res_exp >= 0); // TBD: negative case
             let denom = BigInt::from(BASE_TO).pow(res_exp as u32);
             let numer_minimum_bits = denom.bits() as f64 + bits_for_max_digits;
