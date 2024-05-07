@@ -9,6 +9,7 @@ use core::str;
 use std::string::String;
 
 use num::rational::Ratio;
+use num::FromPrimitive;
 use num_integer::{Integer, Roots};
 use num_traits::float::FloatCore;
 use num_traits::{Num, One, Pow, Signed, Zero};
@@ -364,19 +365,40 @@ impl<const BASE: Base> Neg for BigIntExp<BASE> {
 }
 
 impl<const BASE: Base> Integer for BigIntExp<BASE> {
+    /// Simultaneous truncated division and modulus.
+    /// Returns ```(quotient, remainder)```.
+    ///
+    /// This differs from [`Integer::div_rem`] in that
+    /// the values of both numbers are used as exact values,
+    /// even when they are not whole numbers.
     fn div_rem(&self, other: &Self) -> (Self, Self) {
         let (quot, rem) = self.data.div_mod_floor(&other.data);
         let de = self.exp - other.exp;
         (Self::new(de, quot), Self::new(de, rem))
     }
 
-    #[inline]
+    /// Floored division.
+    ///
+    /// This differs from [`Integer::div_floor`] in that
+    /// the values of both numbers are used as exact values,
+    /// even when they are not whole numbers.
     fn div_floor(&self, other: &Self) -> Self {
         let (quot, _rem) = self.data.div_mod_floor(&other.data);
         let de = self.exp - other.exp;
         Self::new(de, quot)
     }
 
+    /// Floored modulo, satisfying:
+    /// ~~~
+    /// # use num_integer::BigIntExp;
+    /// # let n = 1; let d = 1;
+    /// assert!(n.div_floor(&d) * d + n.mod_floor(&d) == n)
+    /// ~~~
+    /// This differs from [`Integer::mod_floor`] in that
+    /// the values of both numbers are used as exact values,
+    /// even when they are not whole numbers.
+    ///
+    /// FIXME: let the doc test use BigIntExp.
     #[inline]
     fn mod_floor(&self, other: &Self) -> Self {
         let (_quot, rem) = self.data.div_mod_floor(&other.data);
@@ -384,11 +406,20 @@ impl<const BASE: Base> Integer for BigIntExp<BASE> {
         Self::new(de, rem)
     }
 
+    /// Simultaneous floored division and modulus.
+    /// Returns ```(quotient, remainder)```.
+    ///
+    /// This differs from [`Integer::div_mod_floor`] in that
+    /// the values of both numbers are used as exact values,
+    /// even when they are not whole numbers.
     fn div_mod_floor(&self, other: &Self) -> (Self, Self) {
         self.div_rem(other)
     }
 
-    #[inline]
+    /// Ceiled division.
+    /// This differs from [`Integer::div_ceil`] in that
+    /// the values of both numbers are used as exact values,
+    /// even when they are not whole numbers.
     fn div_ceil(&self, other: &Self) -> Self {
         use crate::Sign::*;
         let (d, m) = self.data.div_mod_floor(&other.data);
@@ -407,9 +438,12 @@ impl<const BASE: Base> Integer for BigIntExp<BASE> {
     }
 
     /// Calculates the Greatest Common Divisor (GCD) of the number and `other`.
-    ///
     /// The result is always positive.
+    /// # Panics
+    /// When self and other are not whole numbers.
     fn gcd(&self, other: &Self) -> Self {
+        assert!(self.is_integer(), "self.is_integer()");
+        assert!(other.is_integer(), "other.is_integer()");
         // CHECKME:
         let gcd_bi = self.data.gcd(&other.data);
         let min_exp = self.exp.min(other.exp);
@@ -417,7 +451,11 @@ impl<const BASE: Base> Integer for BigIntExp<BASE> {
     }
 
     /// Calculates the Lowest Common Multiple (LCM) of the number and `other`.
+    /// # Panics
+    /// When self and other are not whole numbers.
     fn lcm(&self, other: &Self) -> Self {
+        assert!(self.is_integer(), "self.is_integer()");
+        assert!(other.is_integer(), "other.is_integer()");
         // CHECKME:
         let lcm_bi = self.data.lcm(&other.data);
         let max_exp = self.exp.max(other.exp);
@@ -426,8 +464,12 @@ impl<const BASE: Base> Integer for BigIntExp<BASE> {
 
     /// Calculates the Greatest Common Divisor (GCD) and
     /// Lowest Common Multiple (LCM) together.
+    /// # Panics
+    /// When self and other are not whole numbers.
     #[inline]
     fn gcd_lcm(&self, other: &Self) -> (Self, Self) {
+        assert!(self.is_integer(), "self.is_integer()");
+        assert!(other.is_integer(), "other.is_integer()");
         // CHECKME:
         let (gcd_bi, lcm_bi) = self.data.gcd_lcm(&other.data);
         let min_exp = self.exp.min(other.exp);
@@ -436,8 +478,12 @@ impl<const BASE: Base> Integer for BigIntExp<BASE> {
     }
 
     /// Greatest common divisor, least common multiple, and Bézout coefficients.
+    /// # Panics
+    /// When self and other are not whole numbers.
     #[inline]
     fn extended_gcd_lcm(&self, other: &Self) -> (num_integer::ExtendedGcd<Self>, Self) {
+        assert!(self.is_integer(), "self.is_integer()");
+        assert!(other.is_integer(), "other.is_integer()");
         let egcd = self.extended_gcd(other);
         let lcm = if egcd.gcd.is_zero() {
             BigIntExp::zero()
@@ -448,7 +494,6 @@ impl<const BASE: Base> Integer for BigIntExp<BASE> {
     }
 
     /// Deprecated, use `is_multiple_of` instead.
-    #[inline]
     fn divides(&self, other: &Self) -> bool {
         self.is_multiple_of(other)
     }
@@ -462,8 +507,7 @@ impl<const BASE: Base> Integer for BigIntExp<BASE> {
 
     /// Returns `true` if the number is divisible by `2`.
     fn is_even(&self) -> bool {
-        // CHECKME:
-        if self.exp < 0 {
+        if !self.is_integer() {
             false
         } else if BASE.is_even() {
             !self.data.is_zero()
@@ -475,8 +519,7 @@ impl<const BASE: Base> Integer for BigIntExp<BASE> {
     /// Returns `true` if the number is not divisible by `2`.
     #[inline]
     fn is_odd(&self) -> bool {
-        // CHECKME:
-        if self.exp < 0 {
+        if !self.is_integer() {
             false
         } else {
             self.data.is_odd()
@@ -493,6 +536,7 @@ impl<const BASE: Base> Integer for BigIntExp<BASE> {
             self + &(other - &m)
         }
     }
+
     /// Rounds down to nearest multiple of argument.
     #[inline]
     fn prev_multiple_of(&self, other: &Self) -> Self {
@@ -502,6 +546,11 @@ impl<const BASE: Base> Integer for BigIntExp<BASE> {
 
 impl<const BASE: Base> Rem for BigIntExp<BASE> {
     type Output = Self;
+    /// Perform the % operation.
+    ///
+    /// This may differ from [`Rem::rem`] in that
+    /// the values of both numbers are used as exact values,
+    /// even when they are not whole numbers.
     #[allow(clippy::suspicious_arithmetic_impl)]
     fn rem(self, other: Self) -> Self {
         let (_quot, rem) = self.data.div_mod_floor(&other.data);
@@ -517,28 +566,45 @@ impl<const BASE: Base> Roots for BigIntExp<BASE> {
             "root of degree {} is imaginary",
             n
         );
-        // CHECKME:
-        Self::from(BigInt::from_biguint(
-            self.data.sign(),
-            self.data.magnitude().nth_root(n),
-        ))
+        let mag = self.data.magnitude();
+        let (exp_div_n, rem) = self.exp.div_rem(&(n as i32));
+        let bui = match rem {
+            0 => mag.nth_root(n),
+            1 => (mag * BASE).nth_root(n),
+            _ => {
+                assert!(rem > 0, "{rem}");
+                let bui_base_pow_rem: crate::BigUint = crate::BigUint::from_u16(BASE)
+                    .expect("{BASE}")
+                    .pow(rem as u32);
+                (mag * bui_base_pow_rem).nth_root(n)
+            }
+        };
+        Self::new(exp_div_n, BigInt::from_biguint(self.data.sign(), bui))
     }
 
     fn sqrt(&self) -> Self {
         assert!(!self.is_negative(), "square root is imaginary");
-        // CHECKME:
-        Self::from(BigInt::from_biguint(
-            self.data.sign(),
-            self.data.magnitude().sqrt(),
-        ))
+        let mag = self.data.magnitude();
+        let (exp_div_2, rem) = self.exp.div_rem(&2);
+        let bui = if rem == 0 {
+            mag.sqrt()
+        } else {
+            (mag * BASE).sqrt()
+        };
+        Self::new(exp_div_2, BigInt::from_biguint(self.data.sign(), bui))
     }
 
     fn cbrt(&self) -> Self {
-        // CHECKME:
-        Self::from(BigInt::from_biguint(
-            self.data.sign(),
-            self.data.magnitude().cbrt(),
-        ))
+        let sign = self.data.sign();
+        let mag = self.data.magnitude();
+        let (exp_div_3, rem) = self.exp.div_rem(&3);
+        let bui = match rem {
+            0 => mag.cbrt(),
+            1 => (mag * BASE).cbrt(),
+            2 => ((mag * BASE) * BASE).cbrt(),
+            _ => unreachable!("{rem}"),
+        };
+        Self::new(exp_div_3, BigInt::from_biguint(sign, bui))
     }
 }
 
@@ -591,6 +657,12 @@ impl<const BASE: Base> BigIntExp<BASE> {
                 self.exp = rhs.exp;
             }
         };
+    }
+
+    /// Checks whether the value is a whole number.
+    #[inline]
+    pub fn is_integer(&self) -> bool {
+        self.exp >= 0
     }
 
     /// Returns the exponent and the BigInt forming the [`BigIntExp`].
