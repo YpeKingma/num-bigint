@@ -255,7 +255,9 @@ impl<const BASE: Base> Num for BigIntExp<BASE> {
         assert!(radix >= 2);
         if let Some(dot_pos) = s.find('.') {
             if dot_pos == 0 {
-                return Err(ParseBigIntError {kind: crate::BigIntErrorKind::InvalidDigit});
+                return Err(ParseBigIntError {
+                    kind: crate::BigIntErrorKind::InvalidDigit,
+                });
             }
             let mut wn = String::new();
             wn.push_str(&s[..dot_pos]);
@@ -435,15 +437,14 @@ impl<const BASE: Base> Integer for BigIntExp<BASE> {
 
     /// Greatest common divisor, least common multiple, and Bézout coefficients.
     #[inline]
-    fn extended_gcd_lcm(&self, _other: &Self) -> (num_integer::ExtendedGcd<Self>, Self) {
-        todo!();
-        // let egcd = self.extended_gcd(other);
-        // let lcm = if egcd.gcd.is_zero() {
-        //     BigInt::zero()
-        // } else {
-        //     BigInt::from(&self.data / &egcd.gcd.data * &other.data)
-        // };
-        // (egcd, lcm)
+    fn extended_gcd_lcm(&self, other: &Self) -> (num_integer::ExtendedGcd<Self>, Self) {
+        let egcd = self.extended_gcd(other);
+        let lcm = if egcd.gcd.is_zero() {
+            BigIntExp::zero()
+        } else {
+            BigIntExp::from(&self.data / &egcd.gcd.data * &other.data)
+        };
+        (egcd, lcm)
     }
 
     /// Deprecated, use `is_multiple_of` instead.
@@ -516,19 +517,28 @@ impl<const BASE: Base> Roots for BigIntExp<BASE> {
             "root of degree {} is imaginary",
             n
         );
-        todo!();
-        // BigInt::from_biguint(self.sign, self.data.nth_root(n))
+        // CHECKME:
+        Self::from(BigInt::from_biguint(
+            self.data.sign(),
+            self.data.magnitude().nth_root(n),
+        ))
     }
 
     fn sqrt(&self) -> Self {
         assert!(!self.is_negative(), "square root is imaginary");
-        todo!();
-        // BigInt::from_biguint(self.sign, self.data.sqrt())
+        // CHECKME:
+        Self::from(BigInt::from_biguint(
+            self.data.sign(),
+            self.data.magnitude().sqrt(),
+        ))
     }
 
     fn cbrt(&self) -> Self {
-        todo!();
-        // BigInt::from_biguint(self.sign, self.data.cbrt())
+        // CHECKME:
+        Self::from(BigInt::from_biguint(
+            self.data.sign(),
+            self.data.magnitude().cbrt(),
+        ))
     }
 }
 
@@ -702,9 +712,12 @@ impl<const BASE: Base> BigIntExp<BASE> {
     /// or in the interval `(modulus, 0]` for `modulus < 0`
     ///
     /// Panics if the exponent is negative or the modulus is zero.
-    pub fn modpow(&self, _exponent: &Self, _modulus: &Self) -> Self {
+    pub fn modpow(&self, exponent: &Self, modulus: &Self) -> Self {
         // ((data * BASE ** exp) ** exponent) % modulus = (data ** exponent * BASE ** (exp*exponent)) % modulus
-        todo!();
+        // CHECKME, this is most likely wrong:
+        let data = BigInt::modpow(&self.data, &exponent.data, &modulus.data);
+        let exp = self.exp * exponent.exp;
+        Self::new(exp, data)
     }
 
     /// Returns the truncated principal square root of `self` --
