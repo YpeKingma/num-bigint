@@ -843,9 +843,8 @@ impl BigIntExp<2> {
             NoSign => return 0f64,
         };
         let magnitude = self.data.magnitude();
-        assert!(magnitude.bits() < i32::MAX as u64);
-        let exponent2 = self.exp + magnitude.bits() as i32;
-        if exponent2 > f64::MAX_EXP {
+        let exponent2 = self.exp as i64 + magnitude.bits() as i64;
+        if exponent2 > f64::MAX_EXP as i64 {
             if s == 1f64 {
                 f64::INFINITY
             } else {
@@ -854,12 +853,27 @@ impl BigIntExp<2> {
         } else {
             let mantissa = if magnitude.bits() > f64::MANTISSA_DIGITS as u64 {
                 // keep only the most significant bits of mag for the mantissa
-                let bytes = magnitude.to_bytes_le();
+                // let bytes = magnitude.to_bytes_le();
                 todo!();
             } else {
-                magnitude.to_f64().expect(&format!("{magnitude:?}"))
+                // move this into convert.rs in folder bigintexp
+                // similar to where the biguint version is defined:
+                // fn to_f64(&self) -> Option<f64> {
+                //     let mantissa = high_bits_to_u64(self);
+                //     let exponent = self.bits() - u64::from(fls(mantissa));
+
+                //     if exponent > core::f64::MAX_EXP as u64 {
+                //         Some(core::f64::INFINITY)
+                //     } else {
+                //         Some((mantissa as f64) * 2.0f64.powi(exponent as i32))
+                //     }
+                // }
+
+                magnitude
+                    .to_f64()
+                    .unwrap_or_else(|| panic!("{magnitude:?}"))
             };
-            s * mantissa * 2f64.powi(exponent2)
+            s * mantissa * 2f64.powi(exponent2 as i32)
         }
     }
 }
