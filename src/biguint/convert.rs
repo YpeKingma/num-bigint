@@ -22,7 +22,7 @@ use num_traits::{FromPrimitive, Num, One, PrimInt, ToPrimitive, Zero};
 
 /// Find last set bit
 /// fls(0) == 0, fls(u32::MAX) == 32
-fn fls<T: PrimInt>(v: T) -> u8 {
+pub(crate) fn fls<T: PrimInt>(v: T) -> u8 {
     mem::size_of::<T>() as u8 * 8 - v.leading_zeros() as u8
 }
 
@@ -270,7 +270,7 @@ impl Num for BigUint {
     }
 }
 
-fn high_bits_to_u64(v: &BigUint) -> u64 {
+pub(crate) fn high_bits_to_u64(v: &BigUint) -> u64 {
     match v.data.len() {
         0 => 0,
         1 => {

@@ -19,7 +19,7 @@ mod multiplication;
 mod subtraction;
 
 mod bits;
-mod convert;
+pub(crate) mod convert;
 mod iter;
 mod monty;
 mod power;

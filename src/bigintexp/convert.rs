@@ -1,9 +1,11 @@
-use core::str::FromStr;
+use core::{ops::Mul, str::FromStr};
+use std::string::String;
 
 use num::Num;
 use num_traits::ToPrimitive;
 
-use crate::{BigIntExp, ParseBigIntError};
+use crate::biguint::convert::{fls, high_bits_to_u64};
+use crate::{BigInt, BigIntExp, ParseBigIntError};
 
 use super::Base;
 
@@ -30,6 +32,29 @@ impl<const BASE: Base> FromStr for BigIntExp<BASE> {
     }
 }
 
+impl<const BASE: Base> Num for BigIntExp<BASE> {
+    type FromStrRadixErr = ParseBigIntError;
+    fn from_str_radix(s: &str, radix: u32) -> Result<Self, ParseBigIntError> {
+        assert!(radix >= 2);
+        let (exp, bi) = if let Some(dot_pos) = s.find('.') {
+            let mut whole_num_str = String::new();
+            whole_num_str.push_str(&s[..dot_pos]);
+            whole_num_str.push_str(&s[(dot_pos + 1)..]);
+            assert!(BASE as u32 == radix); // FIXME: divide by radix ** (len() - (dot_pos + 1))
+            match BigInt::from_str_radix(&whole_num_str, radix) {
+                Err(e) => return Err(e),
+                Ok(big_int) => (((dot_pos + 1) as i32) - (s.len() as i32), big_int),
+            }
+        } else {
+            match BigInt::from_str_radix(s, radix) {
+                Err(e) => return Err(e),
+                Ok(big_int) => (0, big_int),
+            }
+        };
+        Ok(Self::new(exp, bi))
+    }
+}
+
 impl ToPrimitive for BigIntExp<2> {
     #[inline]
     fn to_i64(&self) -> Option<i64> {
@@ -43,67 +68,62 @@ impl ToPrimitive for BigIntExp<2> {
         // self.to_u128().as_ref().and_then(u128::to_i128)
     }
 
-    #[allow(clippy::useless_conversion)]
-    #[inline]
     fn to_u64(&self) -> Option<u64> {
-        todo!();
-        // let mut ret: u64 = 0;
-        // let mut bits = 0;
-
-        // for i in self.data.iter() {
-        //     if bits >= 64 {
-        //         return None;
-        //     }
-
-        //     // XXX Conversion is useless if already 64-bit.
-        //     ret += u64::from(*i) << bits;
-        //     bits += big_digit::BITS;
-        // }
-
-        // Some(ret)
+        use crate::Sign::*;
+        match self.data.sign() {
+            Minus => None,
+            NoSign => Some(0),
+            Plus => {
+                let mantissa = crate::biguint::convert::high_bits_to_u64(self.data.magnitude());
+                let exponent = self.exp + self.data.bits() as i32
+                    - i32::from(crate::biguint::convert::fls(mantissa));
+                if exponent >= 0 {
+                    if exponent < u64::BITS as i32 {
+                        Some(mantissa << exponent)
+                    } else {
+                        None
+                    }
+                } else if exponent > -(u64::BITS as i32) {
+                    Some(mantissa >> -exponent)
+                } else {
+                    None
+                }
+            }
+        }
     }
 
     #[inline]
     fn to_u128(&self) -> Option<u128> {
-        todo!();
-        // let mut ret: u128 = 0;
-        // let mut bits = 0;
-
-        // for i in self.data.iter() {
-        //     if bits >= 128 {
-        //         return None;
-        //     }
-
-        //     ret |= u128::from(*i) << bits;
-        //     bits += big_digit::BITS;
-        // }
-
-        // Some(ret)
+        // FIXME: use more bits when available
+        self.to_u64().map(|n| n as u128)
     }
 
     #[inline]
     fn to_f32(&self) -> Option<f32> {
-        todo!();
-        // let mantissa = high_bits_to_u64(self);
-        // let exponent = self.bits() - u64::from(fls(mantissa));
-
-        // if exponent > core::f32::MAX_EXP as u64 {
-        //     Some(core::f32::INFINITY)
-        // } else {
-        //     Some((mantissa as f32) * 2.0f32.powi(exponent as i32))
-        // }
+        // CHECKME: is this too expensive?
+        self.to_f64().map(|f| f as f32)
     }
 
-    #[inline]
     fn to_f64(&self) -> Option<f64> {
-        todo!();
-        // let mantissa = high_bits_to_u64(self);
-        // let exponent = self.bits() - u64::from(fls(mantissa));
-
-        // if exponent > core::f64::MAX_EXP as u64 {
-        //     Some(core::f64::INFINITY)
-        // } else {
-        //     Some((mantissa as f64) * 2.0f64.powi(exponent as i32))
-        // }
+        let sign = self.data.sign();
+        if sign == crate::Sign::NoSign {
+            return Some(0f64);
+        }
+        let mantissa: u64 = high_bits_to_u64(self.data.magnitude());
+        let exponent: i32 = self.exp + self.data.bits() as i32 - i32::from(fls(mantissa));
+        Some(if exponent > core::f64::MAX_EXP {
+            if sign == crate::Sign::Plus {
+                core::f64::INFINITY
+            } else {
+                core::f64::NEG_INFINITY
+            }
+        } else {
+            if sign == crate::Sign::Plus {
+                mantissa as f64
+            } else {
+                -(mantissa as f64)
+            }
+            .mul(2.0f64.powi(exponent as i32))
+        })
     }
 }
