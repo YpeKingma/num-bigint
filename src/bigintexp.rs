@@ -14,6 +14,8 @@ use num_integer::{Integer, Roots};
 use num_traits::float::FloatCore;
 use num_traits::{Num, One, Pow, Signed, Zero};
 
+mod convert;
+
 use crate::bigint::BigInt;
 
 /// Type for the base of the exponent.
@@ -254,7 +256,7 @@ impl<const BASE: Base> Num for BigIntExp<BASE> {
     type FromStrRadixErr = ParseBigIntError;
     fn from_str_radix(s: &str, radix: u32) -> Result<Self, ParseBigIntError> {
         assert!(radix >= 2);
-        if let Some(dot_pos) = s.find('.') {
+        let (exp, bi) = if let Some(dot_pos) = s.find('.') {
             if dot_pos == 0 {
                 return Err(ParseBigIntError {
                     kind: crate::BigIntErrorKind::InvalidDigit,
@@ -265,18 +267,17 @@ impl<const BASE: Base> Num for BigIntExp<BASE> {
             wn.push_str(&s[(dot_pos + 1)..]);
             assert!(BASE as u32 == radix); // FIXME: divide by radix ** (len() - (dot_pos + 1))
             match BigInt::from_str_radix(&wn, radix) {
-                Err(e) => Err(e),
-                Ok(big_int) => Ok(BigIntExp::new(
-                    ((dot_pos + 1) as i32) - (s.len() as i32),
-                    big_int,
-                )),
+                Err(e) => return Err(e),
+                Ok(big_int) => (((dot_pos + 1) as i32) - (s.len() as i32), big_int),
             }
         } else {
             match BigInt::from_str_radix(s, radix) {
-                Err(e) => Err(e),
-                Ok(big_int) => Ok(BigIntExp::new(0, big_int)),
+                Err(e) => return Err(e),
+                Ok(big_int) => (0, big_int),
             }
-        }
+        };
+        // possibly parse and e/E followed by an whole number exponent.
+        Ok(Self::new(exp, bi))
     }
 }
 
@@ -858,6 +859,8 @@ impl BigIntExp<2> {
             } else {
                 // move this into convert.rs in folder bigintexp
                 // similar to where the biguint version is defined:
+                // this also requires pub(crate) or pub(super)
+                // for the used functions from biguint/convert.rs
                 // fn to_f64(&self) -> Option<f64> {
                 //     let mantissa = high_bits_to_u64(self);
                 //     let exponent = self.bits() - u64::from(fls(mantissa));
@@ -868,6 +871,7 @@ impl BigIntExp<2> {
                 //         Some((mantissa as f64) * 2.0f64.powi(exponent as i32))
                 //     }
                 // }
+                // see also https://doc.rust-lang.org/reference/visibility-and-privacy.html
 
                 magnitude
                     .to_f64()
