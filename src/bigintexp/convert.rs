@@ -59,13 +59,6 @@ impl ToPrimitive for BigIntExp<2> {
     #[inline]
     fn to_i64(&self) -> Option<i64> {
         todo!();
-        // self.to_u64().as_ref().and_then(u64::to_i64)
-    }
-
-    #[inline]
-    fn to_i128(&self) -> Option<i128> {
-        todo!();
-        // self.to_u128().as_ref().and_then(u128::to_i128)
     }
 
     fn to_u64(&self) -> Option<u64> {
@@ -90,18 +83,6 @@ impl ToPrimitive for BigIntExp<2> {
                 }
             }
         }
-    }
-
-    #[inline]
-    fn to_u128(&self) -> Option<u128> {
-        // FIXME: use more bits when available
-        self.to_u64().map(|n| n as u128)
-    }
-
-    #[inline]
-    fn to_f32(&self) -> Option<f32> {
-        // CHECKME: is this too expensive?
-        self.to_f64().map(|f| f as f32)
     }
 
     fn to_f64(&self) -> Option<f64> {
