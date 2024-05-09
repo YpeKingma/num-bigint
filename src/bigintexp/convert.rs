@@ -1,3 +1,34 @@
+use core::str::FromStr;
+
+use num::Num;
+use num_traits::ToPrimitive;
+
+use crate::{BigIntExp, ParseBigIntError};
+
+use super::Base;
+
+impl<const BASE: Base> FromStr for BigIntExp<BASE> {
+    type Err = ParseBigIntError;
+    /// Parses string `s` that should consist of an optional sign, followed by decimal digits
+    /// that may contain a decimal dot.
+    /// In case `BASE` is not 10, the returned value will round
+    /// to the decimals provided in `s`.
+    #[inline]
+    fn from_str(s: &str) -> Result<BigIntExp<BASE>, ParseBigIntError> {
+        if BASE == 10 {
+            BigIntExp::from_str_radix(s, 10)
+        } else {
+            match BigIntExp::<10>::from_str_radix(s, 10) {
+                Err(e) => Err(e),
+                Ok(bie_10) => {
+                    let digits = s.chars().filter(|c| c.is_ascii_digit()).count();
+                    let min_digits_base = digits as f64 * f64::ln(10f64) / f64::ln(BASE as f64);
+                    Ok(bie_10.to_base::<BASE>(min_digits_base.ceil().max(1f64) as u32))
+                }
+            }
+        }
+    }
+}
 
 impl ToPrimitive for BigIntExp<2> {
     #[inline]
